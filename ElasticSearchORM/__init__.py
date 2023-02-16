@@ -187,10 +187,14 @@ class Queryset:
         if not self._body["query"].has_key("bool"):
             self._body["query"]["bool"] = {}
         if not self._body["query"]["bool"].has_key(search_type):
+            if search_type != "filter":
+                self._body["query"]["bool"]["filter"] = []
             self._body["query"]["bool"][search_type] = []
+
         type_list = self._body["query"]["bool"][search_type]
+        filter_list = self._body["query"]["bool"]["filter"]
         for key, value in kwargs.items():
-            self.__create_filter(key, value, type_list)
+            self.__create_filter(key, value, type_list, filter_list)
         return self
 
     def all(self):
@@ -200,17 +204,17 @@ class Queryset:
             return DictModel(res_data)
         return res_data
 
-    def __create_filter(self, key, value, lis):
+    def __create_filter(self, key, value, type_list, _filter, is_recommend=True):
         if "__" not in key:
             if key != "query_string":
-                con_list = self.__find_item("terms", lis)
+                con_list = self.__find_item("terms", type_list)
                 if key not in con_list:
                     con_list[key] = [str(value)]
                 else:
                     con_list[key].append(str(value))
                 return
 
-            con_list = self.__find_item("query_string", lis)
+            con_list = self.__find_item("query_string", type_list)
             con_list["query"] = str(value)
 
         else:
@@ -219,18 +223,19 @@ class Queryset:
                 raise TypeError("filter 错误的条件格式  __ 前后不能为空")
 
             dic = {
-                "gte": self.__range,
-                "lte": self.__range,
-                "gt": self.__range,
-                "lt": self.__range,
-                "icontains": self.__icontaions,
-                "contains": self.__contains,
-                "startswith": self.__startswith,
-                "endswith": self.__endswith,
-                "regexp": self.__regexp,
-                "null": lambda x, y, z, q: None,
+                "gte": (self.__range, _filter),
+                "lte": (self.__range, _filter),
+                "gt": (self.__range, _filter),
+                "lt": (self.__range, _filter),
+                "icontains": (self.__icontaions, type_list),
+                "contains": (self.__contains, type_list),
+                "startswith": (self.__startswith, type_list),
+                "endswith": (self.__endswith, type_list),
+                "regexp": (self.__regexp, type_list),
+                "null": (lambda x, y, z, q: None, []),
             }
-            dic.get(condition, "null")(field, condition, value, lis)
+            filter_func, recommend_list = dic.get(condition, "null")
+            filter_func(field, condition, value, recommend_list if is_recommend else type_list)
 
     def __find_item(self, key, lis):
         for item in lis:
