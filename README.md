@@ -8,7 +8,8 @@
 
 ## 安装教程
 
-- 直接把文件copy到根目录下即可使用
+- 直接把文件copy到根目录下
+- 安装依赖包 pip install elasticsearch
 
 ## 快速上手
 
