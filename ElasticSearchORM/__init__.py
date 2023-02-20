@@ -155,9 +155,13 @@ class Queryset:
                 _aggs[(str(item) + "_value")] = {
                     "terms": {"field": str(item)}
                 }
-            # todo 处理更加复杂的聚合
-            if isinstance(item, tuple):
-                pass
+            if isinstance(item, tuple) and len(item) == 2:
+                condition = item[1]
+                if condition == "unique":
+                    _aggs["unique_{}".format(str(item[0]))] = {
+                        "cardinality": {"filed": item[0]}
+                    }
+
         return self
 
     def limit(self, size):
@@ -174,10 +178,27 @@ class Queryset:
 
         if not isinstance(size, int):
             raise TypeError("size 必须是int类型，或者纯数字文本")
-        self._body["seize"] = size
+        self._body["size"] = size
         return self
 
-    def filter(self, search_type="must", **kwargs):
+    def offset(self, size):
+        """
+        选择需要展示数据的条数
+        :param size:
+        :return:
+        """
+        if isinstance(size, str):
+            if not size.isdigit():
+                raise TypeError("size 必须是int类型，或者纯数字文本")
+            self._body["from"] = int(size)
+            return self
+
+        if not isinstance(size, int):
+            raise TypeError("size 必须是int类型，或者纯数字文本")
+        self._body["from"] = size
+        return self
+
+    def filter(self, search_type="must", is_recommend=True, **kwargs):
         """
         eg: id=1,title__lt=20,
         age__range=(10,20)
@@ -194,7 +215,7 @@ class Queryset:
         type_list = self._body["query"]["bool"][search_type]
         filter_list = self._body["query"]["bool"]["filter"]
         for key, value in kwargs.items():
-            self.__create_filter(key, value, type_list, filter_list)
+            self.__create_filter(key, value, type_list, filter_list, is_recommend)
         return self
 
     def all(self):
@@ -297,9 +318,8 @@ class MElasticSearch:
 
 
 if __name__ == "__main__":
-    query = Queryset("")
-    # query.values("event", "user_id", "biz_name", "event_value1", "biz")
-    # query.filter(query_string="message:event_log AND biz:345 AND (event:2 OR event:1)", user_id="3106190")
-    query.group_by("event_value")
+    query = Queryset("","")
+    query.values("user_id").filter(query_string="message:event_log AND biz:345 AND (event:2 OR event:1)")
+    res = query.group_by(("user_id", "unique"), "event")
 
     print "\n\n\n\n", query._body
