@@ -61,7 +61,7 @@ class DictModel(dict):
         :param kwargs:
         :return:
         """
-        values = self.data
+        values = self.search_data
         func = lambda y: self.__filter_func(y.get("_source"), kwargs)
         return filter(func, values)
 
@@ -159,7 +159,7 @@ class Queryset:
                 condition = item[1]
                 if condition == "unique":
                     _aggs["unique_{}".format(str(item[0]))] = {
-                        "cardinality": {"filed": item[0]}
+                        "cardinality": {"field": item[0]}
                     }
 
         return self
