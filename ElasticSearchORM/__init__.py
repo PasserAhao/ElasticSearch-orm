@@ -100,7 +100,7 @@ class DictModel(dict):
 
 
 class Queryset:
-    def __init__(self, index_list, es_obj, size=100):
+    def __init__(self, index_list, es_obj, size=10000):
         self.es = es_obj
         self._index = index_list
         self._body = {
@@ -151,18 +151,39 @@ class Queryset:
             self._body["aggs"] = {}
         _aggs = self._body["aggs"]
         for item in args:
-            if isinstance(item, str):
-                _aggs[(str(item) + "_value")] = {
-                    "terms": {"field": str(item)}
-                }
-            if isinstance(item, tuple) and len(item) == 2:
-                condition = item[1]
-                if condition == "unique":
-                    _aggs["unique_{}".format(str(item[0]))] = {
-                        "cardinality": {"field": item[0]}
-                    }
+            self.__create_group(item, _aggs)
 
         return self
+
+    def __create_group(self, item, _aggs):
+        if isinstance(item, str):
+            _aggs[(str(item))] = {
+                "terms": {"field": str(item)}
+            }
+        if isinstance(item, dict):
+            for key, value in item.items():
+                if isinstance(value, str):
+                    if value == "distinct":
+                        _aggs["distinct_{}".format(key)] = {
+                            "cardinality": {"field": key}
+                        }
+                    if value == "sum":
+                        _aggs["sum_{}".format(key)] = {
+                            "sum": {"field": key}
+                        }
+                    if value == "avg":
+                        _aggs["avg_{}".format(key)] = {
+                            "avg": {"field": key}
+                        }
+                if isinstance(value, dict):
+                    field_name = "combine_{}".format(key)
+                    _aggs[field_name] = {
+                        "terms": {"field": key},
+                        "aggs": {}
+                    }
+
+                    aggs = _aggs[field_name]["aggs"]
+                    self.__create_group(value, aggs)
 
     def limit(self, size):
         """
@@ -218,13 +239,6 @@ class Queryset:
             self.__create_filter(key, value, type_list, filter_list, is_recommend)
         return self
 
-    def all(self):
-        # 对返回的数据进行一次封装
-        res_data = self.es.search(index=self._index, body=self._body)
-        if isinstance(res_data, dict):
-            return DictModel(res_data)
-        return res_data
-
     def __create_filter(self, key, value, type_list, _filter, is_recommend=True):
         if "__" not in key:
             if key != "query_string":
@@ -253,10 +267,19 @@ class Queryset:
                 "startswith": (self.__startswith, type_list),
                 "endswith": (self.__endswith, type_list),
                 "regexp": (self.__regexp, type_list),
-                "null": (lambda x, y, z, q: None, []),
             }
-            filter_func, recommend_list = dic.get(condition, "null")
+            func_info = dic.get(condition, False)
+            if not func_info:
+                raise ValueError("没有该类型哦:{}".format(condition))
+            filter_func, recommend_list = func_info
             filter_func(field, condition, value, recommend_list if is_recommend else type_list)
+
+    def all(self):
+        # 对返回的数据进行一次封装
+        res_data = self.es.search(index=self._index, body=self._body)
+        if isinstance(res_data, dict):
+            return DictModel(res_data)
+        return res_data
 
     def __find_item(self, key, lis):
         for item in lis:
@@ -318,8 +341,8 @@ class MElasticSearch:
 
 
 if __name__ == "__main__":
-    query = Queryset("","")
-    query.values("user_id").filter(query_string="message:event_log AND biz:345 AND (event:2 OR event:1)")
-    res = query.group_by(("user_id", "unique"), "event")
+    query = Queryset("", "")
+    query.filter(query_string="message:event_log AND biz:345", event_note__icontains="event")
+    res = query.group_by({"biz": {"user_id": "distinct"}}, "event")
 
     print "\n\n\n\n", query._body
