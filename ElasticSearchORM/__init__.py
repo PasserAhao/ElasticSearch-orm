@@ -1,4 +1,6 @@
 # coding=utf-8
+from weakref import WeakValueDictionary
+
 from elasticsearch import Elasticsearch
 
 """
@@ -99,8 +101,8 @@ class DictModel(dict):
         return True
 
 
-class Queryset:
-    def __init__(self, index_list, es_obj, size=10000):
+class Queryset(object):
+    def __init__(self, index_list, es_obj, size=100):
         self.es = es_obj
         self._index = index_list
         self._body = {
@@ -167,13 +169,9 @@ class Queryset:
                         _aggs["distinct_{}".format(key)] = {
                             "cardinality": {"field": key}
                         }
-                    if value == "sum":
-                        _aggs["sum_{}".format(key)] = {
-                            "sum": {"field": key}
-                        }
-                    if value == "avg":
-                        _aggs["avg_{}".format(key)] = {
-                            "avg": {"field": key}
+                    if value in ["sum", "avg", "max", "min"]:
+                        _aggs["{}_{}".format(value, key)] = {
+                            value: {"field": key}
                         }
                 if isinstance(value, dict):
                     field_name = "combine_{}".format(key)
@@ -274,13 +272,6 @@ class Queryset:
             filter_func, recommend_list = func_info
             filter_func(field, condition, value, recommend_list if is_recommend else type_list)
 
-    def all(self):
-        # 对返回的数据进行一次封装
-        res_data = self.es.search(index=self._index, body=self._body)
-        if isinstance(res_data, dict):
-            return DictModel(res_data)
-        return res_data
-
     def __find_item(self, key, lis):
         for item in lis:
             if key in item:
@@ -317,10 +308,29 @@ class Queryset:
         con_list = self.__find_item("regexp", lis)
         con_list[field] = value
 
+    def all(self):
+        # 对返回的数据进行一次封装
+        res_data = self.es.search(index=self._index, body=self._body)
+        if isinstance(res_data, dict):
+            return DictModel(res_data)
+        return res_data
 
-class MElasticSearch:
+
+class MElasticSearch(object):
+
+
     def __init__(self, *args, **kwargs):
         self.es_model = Elasticsearch(*args, **kwargs)
+
+    # # 控制同样的参数生成的实例的内存地址一样
+    # _mes_cache = WeakValueDictionary()
+    # def __new__(cls, name, *args, **kwargs):
+    #     if name in cls._mes_cache:
+    #         return cls._mes_cache[name]
+    #     else:
+    #         self = object.__new__(cls)
+    #         cls._mes_cache[name] = self
+    #         return self
 
     def object(self, index_list):
         try:
@@ -343,6 +353,12 @@ class MElasticSearch:
 if __name__ == "__main__":
     query = Queryset("", "")
     query.filter(query_string="message:event_log AND biz:345", event_note__icontains="event")
-    res = query.group_by({"biz": {"user_id": "distinct"}}, "event")
+    res = query.group_by({"biz": {"user_id": "distinct","name":{"name1":"distinct"},"age":"max","ag2":"min"}}, "event")
 
-    print "\n\n\n\n", query._body
+    print query._body
+
+
+    # es = MElasticSearch(['102.0.1.7'])
+    # index = es.get_alias("event_log*")[3]
+    # data = es.object(index).values("id","name").filter(id__gt=3).order_by("id","-age").group_by().all()
+    # print data.search_data
